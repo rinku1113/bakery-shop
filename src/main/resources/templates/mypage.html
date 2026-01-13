@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>マイページ - パン屋さんオンラインショップ</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+            background-color: #fff8f0;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        /* ヘッダー */
+        header {
+            background: linear-gradient(135deg, #d4a574 0%, #c8956a 100%);
+            color: white;
+            padding: 1rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .header-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            text-decoration: none;
+            color: white;
+        }
+        
+        .search-form {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            max-width: 400px;
+            margin: 0 20px;
+        }
+        
+        .search-form input {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 25px;
+            font-size: 14px;
+        }
+        
+        .search-form button {
+            padding: 10px 20px;
+            background: #8b6f47;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        .search-form button:hover {
+            background: #7a5f3a;
+        }
+        
+        nav {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            transition: background 0.3s;
+            font-size: 14px;
+        }
+        
+        nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        /* メインコンテンツ */
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .page-title {
+            font-size: 2.5rem;
+            color: #8b6f47;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .mypage-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .info-section {
+            margin-bottom: 30px;
+        }
+        
+        .info-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .info-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        .info-value {
+            font-size: 1.1rem;
+            color: #333;
+            padding: 12px 15px;
+            background: #f5e6d3;
+            border-radius: 8px;
+            word-break: break-word;
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            color: #8b6f47;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #d4a574;
+        }
+        
+        .message {
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 0.95rem;
+        }
+        
+        .message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #d4a574;
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: background 0.3s;
+            text-align: center;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        
+        .btn:hover {
+            background: #c8956a;
+        }
+        
+        .btn-secondary {
+            background: #8b6f47;
+        }
+        
+        .btn-secondary:hover {
+            background: #7a5f3a;
+        }
+        
+        .action-buttons {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        /* フッター */
+        footer {
+            background: #8b6f47;
+            color: white;
+            text-align: center;
+            padding: 30px 20px;
+            margin-top: 60px;
+        }
+        
+        @media (max-width: 768px) {
+            .header-container {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .search-form {
+                max-width: 100%;
+                margin: 0;
+            }
+            
+            nav {
+                justify-content: center;
+            }
+            
+            .page-title {
+                font-size: 2rem;
+            }
+            
+            .mypage-container {
+                padding: 30px 20px;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <a href="/" class="logo">🍞 パン屋さんオンライン</a>
+            <form th:action="@{/search}" method="get" class="search-form">
+                <input type="text" name="keyword" placeholder="パンを検索...">
+                <button type="submit">検索</button>
+            </form>
+            <nav>
+                <a th:href="@{/products}">商品一覧</a>
+                <a th:href="@{/cart}" sec:authorize="isAuthenticated()">カート</a>
+                <a th:href="@{/mypage}" sec:authorize="isAuthenticated()">マイページ</a>
+                <a th:href="@{/login}" sec:authorize="!isAuthenticated()">ログイン</a>
+                <a th:href="@{/register}" sec:authorize="!isAuthenticated()">新規登録</a>
+                <form th:action="@{/logout}" method="post" style="display:inline;" sec:authorize="isAuthenticated()">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                    <button type="submit" style="background:none;border:none;color:white;cursor:pointer;padding:8px 15px;border-radius:20px;font-size:14px;">ログアウト</button>
+                </form>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <h1 class="page-title">マイページ</h1>
+        
+        <div class="mypage-container">
+            <div th:if="${param.updated != null}" class="message success">登録内容を更新しました。</div>
+            
+            <div class="section-title">会員情報</div>
+            
+            <div class="info-section">
+                <div class="info-label">ユーザー名</div>
+                <div class="info-value" th:text="${user.username}">ユーザー名</div>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-label">メールアドレス</div>
+                <div class="info-value" th:text="${user.email != null ? user.email : '未登録'}">メールアドレス</div>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-label">電話番号</div>
+                <div class="info-value" th:text="${user.telephone != null and user.telephone != '' ? user.telephone : '未登録'}">電話番号</div>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-label">住所</div>
+                <div class="info-value" th:text="${user.address != null and user.address != '' ? user.address : '未登録'}">住所</div>
+            </div>
+            
+            <div class="info-section">
+                <div class="info-label">登録日</div>
+                <div class="info-value" th:text="${user.createdAt != null ? #temporals.format(user.createdAt, 'yyyy年MM月dd日') : '不明'}">登録日</div>
+            </div>
+            
+            <div class="action-buttons">
+                <a th:href="@{/mypage/edit}" class="btn">登録内容を変更</a>
+                <a th:href="@{/}" class="btn btn-secondary">ホームに戻る</a>
+                <a th:href="@{/products}" class="btn">商品一覧を見る</a>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; <span th:text="${T(java.time.Year).now().value}">2025</span> パン屋さんオンラインショップ. All rights reserved.</p>
+    </footer>
+</body>
+</html>
