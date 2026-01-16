@@ -1,0 +1,80 @@
+package com.example.shopping;
+
+import java.util.List;
+
+import org.springframework.cloud.gateway.filter.GatewayFilter;
+import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+
+import reactor.core.publisher.Mono;
+
+/**
+ * API ゲートウェイ用の JWT 検証フィルター
+ * リクエストヘッダーから JWT トークンを取得し、検証してアクセス制御を行う
+ */
+@Component
+public class JwtGatewayFilter extends AbstractGatewayFilterFactory<JwtGatewayFilter.Config> {
+
+    private final JwtDecoder jwtDecoder;
+
+    public JwtGatewayFilter(JwtDecoder jwtDecoder) {
+        super(Config.class);
+        this.jwtDecoder = jwtDecoder;
+    }
+
+    @Override
+    public GatewayFilter apply(Config config) {
+        return (exchange, chain) -> {
+            ServerHttpRequest request = exchange.getRequest();
+            String authHeader = request.getHeaders().getFirst("Authorization");
+
+            // Authorization ヘッダーが存在しない、または Bearer トークンでない場合
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return onError(exchange, "Missing or invalid Authorization header", HttpStatus.UNAUTHORIZED);
+            }
+
+            // JWT トークンを抽出
+            String token = authHeader.substring(7);
+
+            try {
+                // JWT を検証
+                Jwt jwt = jwtDecoder.decode(token);
+
+                // JWT のクレームからユーザー情報を取得
+                String username = jwt.getClaimAsString("sub");
+                List<String> authorities = jwt.getClaimAsStringList("authorities");
+
+                // 検証成功: リクエストヘッダーにユーザー情報を追加
+                ServerHttpRequest modifiedRequest = request.mutate()
+                    .header("X-User-Name", username != null ? username : "")
+                    .header("X-User-Authorities", authorities != null ? String.join(",", authorities) : "")
+                    .build();
+
+                return chain.filter(exchange.mutate().request(modifiedRequest).build());
+
+            } catch (JwtException e) {
+                // JWT 検証失敗
+                return onError(exchange, "Invalid JWT token: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
+            }
+        };
+    }
+
+    private Mono<Void> onError(ServerWebExchange exchange, String message, HttpStatus status) {
+        ServerHttpResponse response = exchange.getResponse();
+        response.setStatusCode(status);
+        response.getHeaders().add("X-Error-Message", message);
+        return response.setComplete();
+    }
+
+    public static class Config {
+        // フィルター設定（必要に応じて追加）
+    }
+}
+

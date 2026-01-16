@@ -1,0 +1,179 @@
+package com.example.shopping;
+
+import jakarta.validation.Valid;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+
+@Controller
+public class MypageController {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public MypageController(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    @GetMapping("/mypage")
+    public String mypage(Authentication authentication, Model model) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return "redirect:/login";
+        }
+
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = userDetails.getUsername();
+        
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        
+        model.addAttribute("user", user);
+        return "mypage";
+    }
+
+    @GetMapping("/mypage/edit")
+    public String showEditForm(Authentication authentication, Model model) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return "redirect:/login";
+        }
+
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = userDetails.getUsername();
+        
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        
+        // 既存のユーザー情報でフォームを初期化
+        UserUpdateForm form = new UserUpdateForm();
+        form.setUsername(user.getUsername());
+        form.setEmail(user.getEmail());
+        form.setAddress(user.getAddress() != null ? user.getAddress() : "");
+        form.setTelephone(user.getTelephone() != null ? user.getTelephone() : "");
+        
+        model.addAttribute("userUpdateForm", form);
+        model.addAttribute("user", user);
+        return "mypage_edit";
+    }
+
+    @PostMapping("/mypage/update")
+    public String updateUser(@Valid @ModelAttribute("userUpdateForm") UserUpdateForm form,
+                            BindingResult bindingResult,
+                            Authentication authentication,
+                            Model model) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof UserDetails)) {
+            return "redirect:/login";
+        }
+
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = userDetails.getUsername();
+        
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        
+        // バリデーションエラーがある場合
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+        
+        // ユーザー名の前後の空白を削除
+        String newUsername = form.getUsername() != null ? form.getUsername().trim() : "";
+        
+        // バリデーション: ユーザー名の空チェック
+        if (newUsername.isEmpty()) {
+            model.addAttribute("error", "ユーザー名を入力してください");
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+        
+        // バリデーション: ユーザー名の重複チェック（現在のユーザー名以外）
+        if (!newUsername.equals(user.getUsername()) && userRepository.existsByUsername(newUsername)) {
+            model.addAttribute("error", "そのユーザー名は既に使われています");
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+        
+        // バリデーション: メールアドレスの重複チェック（現在のメールアドレス以外）
+        String newEmail = form.getEmail() != null ? form.getEmail().trim() : "";
+        if (newEmail.isEmpty()) {
+            model.addAttribute("error", "メールアドレスを入力してください");
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+        if (!newEmail.equals(user.getEmail()) && userRepository.existsByEmail(newEmail)) {
+            model.addAttribute("error", "そのメールアドレスは既に使われています");
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+        
+        // パスワード変更のチェック
+        if (form.getPassword() != null && !form.getPassword().isEmpty()) {
+            // パスワードが入力されている場合のみバリデーション
+            if (form.getPassword().length() < 4) {
+                model.addAttribute("error", "パスワードは4文字以上で入力してください");
+                model.addAttribute("user", user);
+                return "mypage_edit";
+            }
+            
+            if (!form.getPassword().equals(form.getPasswordConfirm())) {
+                model.addAttribute("error", "パスワードが一致しません");
+                model.addAttribute("user", user);
+                return "mypage_edit";
+            }
+            
+            // パスワードを更新
+            user.setPassword(passwordEncoder.encode(form.getPassword()));
+        }
+        
+        // 電話番号からハイフンを削除
+        String telephone = form.getTelephone() != null ? form.getTelephone().trim().replace("-", "").replace("－", "") : "";
+        
+        // 住所の数字とハイフンを半角に変換
+        String address = form.getAddress() != null ? convertToHalfWidth(form.getAddress().trim()) : "";
+        
+        // ユーザー情報を更新
+        try {
+            user.setUsername(newUsername);
+            user.setEmail(newEmail);
+            user.setAddress(address);
+            user.setTelephone(telephone);
+            userRepository.save(user);
+            return "redirect:/mypage?updated";
+        } catch (Exception e) {
+            model.addAttribute("error", "更新中にエラーが発生しました。もう一度お試しください。");
+            model.addAttribute("user", user);
+            return "mypage_edit";
+        }
+    }
+    
+    /**
+     * 住所の数字とハイフンを半角に変換する
+     */
+    private String convertToHalfWidth(String address) {
+        if (address == null || address.isEmpty()) {
+            return address;
+        }
+        
+        StringBuilder result = new StringBuilder();
+        for (char c : address.toCharArray()) {
+            if (c >= '０' && c <= '９') {
+                // 全角数字を半角数字に変換
+                result.append((char)(c - '０' + '0'));
+            } else if (c == '－') {
+                // 全角ハイフンを半角ハイフンに変換
+                result.append('-');
+            } else {
+                result.append(c);
+            }
+        }
+        return result.toString();
+    }
+}

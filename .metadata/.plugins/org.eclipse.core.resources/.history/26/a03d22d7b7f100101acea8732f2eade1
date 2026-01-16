@@ -1,0 +1,149 @@
+package com.example.shopping;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticatedPrincipal;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import jakarta.servlet.http.HttpServletRequest;
+
+/**
+ * OAuth 2.0 ログイン成功後の処理を行うコントローラー
+ * Google / GitHub からのログイン成功後、JWT を発行する
+ */
+@Controller
+public class OAuth2Controller {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    public OAuth2Controller(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * OAuth 2.0 ログイン成功後の処理
+     * Google / GitHub から取得したユーザー情報を基に、ローカルユーザーを作成または更新し、
+     * JWT を発行するためのエンドポイントにリダイレクト
+     */
+    @GetMapping("/oauth2/success")
+    public String oauth2Success(
+            @AuthenticatedPrincipal OAuth2User oauth2User,
+            Authentication authentication,
+            Model model,
+            HttpServletRequest request) {
+        
+        if (oauth2User == null) {
+            return "redirect:/login?error=oauth2";
+        }
+
+        try {
+            // OAuth 2.0 プロバイダ名を取得（google または github）
+            String provider = "";
+            if (authentication instanceof OAuth2AuthenticationToken) {
+                OAuth2AuthenticationToken token = (OAuth2AuthenticationToken) authentication;
+                provider = token.getAuthorizedClientRegistrationId();
+            }
+
+            // ユーザー情報を取得
+            String email = null;
+            String username = null;
+            String name = null;
+
+            if (oauth2User instanceof OidcUser) {
+                // OIDC ユーザー（Google など）
+                OidcUser oidcUser = (OidcUser) oauth2User;
+                email = oidcUser.getEmail();
+                username = oidcUser.getPreferredUsername();
+                if (username == null || username.isEmpty()) {
+                    username = oidcUser.getSubject(); // sub クレームを使用
+                }
+                name = oidcUser.getFullName();
+            } else {
+                // 通常の OAuth 2.0 ユーザー（GitHub など）
+                email = oauth2User.getAttribute("email");
+                username = oauth2User.getAttribute("login"); // GitHub の login
+                if (username == null || username.isEmpty()) {
+                    username = oauth2User.getName();
+                }
+                name = oauth2User.getAttribute("name");
+            }
+
+            if (email == null || email.isEmpty()) {
+                email = username + "@" + provider + ".oauth";
+            }
+
+            // ユーザー名を生成（プロバイダ名を含める）
+            String finalUsername = provider + "_" + username;
+            if (finalUsername.length() > 50) {
+                finalUsername = finalUsername.substring(0, 50);
+            }
+
+            // 既存ユーザーを検索（メールアドレスまたはユーザー名で）
+            User user = userRepository.findByUsername(finalUsername)
+                    .orElse(userRepository.findByEmail(email).orElse(null));
+
+            if (user == null) {
+                // 新規ユーザーを作成
+                user = new User();
+                user.setUsername(finalUsername);
+                user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString())); // ランダムパスワード
+                user.setEmail(email);
+                user.setRole("ROLE_USER");
+                user.setCreatedAt(LocalDateTime.now());
+                userRepository.save(user);
+            } else {
+                // 既存ユーザーの情報を更新（必要に応じて）
+                if (user.getEmail() == null || user.getEmail().isEmpty()) {
+                    user.setEmail(email);
+                }
+                userRepository.save(user);
+            }
+
+            // JWT 発行エンドポイントにリダイレクト
+            // 実際の JWT 発行は Authorization Server のエンドポイントを使用
+            return "redirect:/?oauth2_success=true";
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "redirect:/login?error=oauth2";
+        }
+    }
+
+    /**
+     * JWT トークン情報を取得する API エンドポイント
+     * 認証済みユーザーに対して JWT の情報を返す
+     */
+    @GetMapping("/api/jwt/info")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> getJwtInfo(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Map<String, Object> info = Map.of(
+            "authenticated", true,
+            "username", authentication.getName(),
+            "authorities", authentication.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .toList(),
+            "jwtIssuer", "http://localhost:8080",
+            "note", "JWT は Authorization Server の /oauth2/token エンドポイントから取得できます"
+        );
+
+        return ResponseEntity.ok(info);
+    }
+}
+

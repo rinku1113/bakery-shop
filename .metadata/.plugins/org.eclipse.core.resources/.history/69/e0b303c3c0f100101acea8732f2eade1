@@ -1,0 +1,68 @@
+package com.example.shopping;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.cloud.gateway.route.RouteLocator;
+import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Spring Cloud Gateway の設定クラス
+ * JWT 検証フィルターを使用したルーティング設定
+ */
+@Configuration
+@ConditionalOnClass(RouteLocatorBuilder.class)
+public class GatewayConfig {
+
+    private final JwtGatewayFilter jwtGatewayFilter;
+
+    public GatewayConfig(JwtGatewayFilter jwtGatewayFilter) {
+        this.jwtGatewayFilter = jwtGatewayFilter;
+    }
+
+    /**
+     * API ゲートウェイのルーティング設定
+     * JWT 検証フィルターを適用してアクセス制御を行う
+     */
+    @Bean
+    public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
+        return builder.routes()
+            // 認証不要なエンドポイント（公開 API）
+            .route("public-api", r -> r
+                .path("/api/public/**")
+                .uri("http://localhost:8080")
+            )
+            // JWT 検証が必要なエンドポイント（保護された API）
+            .route("protected-api", r -> r
+                .path("/api/protected/**")
+                .filters(f -> f
+                    .filter(jwtGatewayFilter.apply(new JwtGatewayFilter.Config()))
+                    .rewritePath("/api/protected/(?<segment>.*)", "/api/${segment}")
+                )
+                .uri("http://localhost:8080")
+            )
+            // カート API（認証必須）
+            .route("cart-api", r -> r
+                .path("/api/cart/**")
+                .filters(f -> f
+                    .filter(jwtGatewayFilter.apply(new JwtGatewayFilter.Config()))
+                )
+                .uri("http://localhost:8080")
+            )
+            // 注文 API（認証必須）
+            .route("order-api", r -> r
+                .path("/api/order/**")
+                .filters(f -> f
+                    .filter(jwtGatewayFilter.apply(new JwtGatewayFilter.Config()))
+                )
+                .uri("http://localhost:8080")
+            )
+            // その他のリクエストは通常のアプリケーションに転送
+            .route("default", r -> r
+                .path("/**")
+                .uri("http://localhost:8080")
+            )
+            .build();
+    }
+}
+

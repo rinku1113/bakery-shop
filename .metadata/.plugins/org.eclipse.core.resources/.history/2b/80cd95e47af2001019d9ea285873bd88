@@ -1,0 +1,77 @@
+package com.example.shopping;
+
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * JWT 検証用の API コントローラー
+ * API ゲートウェイからのリクエストで JWT を検証する
+ */
+@RestController
+@RequestMapping("/api/gateway")
+public class JwtValidationController {
+
+    private final JwtDecoder jwtDecoder;
+
+    public JwtValidationController(JwtDecoder jwtDecoder) {
+        this.jwtDecoder = jwtDecoder;
+    }
+
+    /**
+     * JWT トークンを検証するエンドポイント
+     * Authorization ヘッダーから JWT を取得し、検証結果を返す
+     */
+    @PostMapping("/validate")
+    public ResponseEntity<Map<String, Object>> validateJwt(
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of(
+                    "valid", false,
+                    "error", "Missing or invalid Authorization header"
+                ));
+        }
+
+        String token = authHeader.substring(7);
+
+        try {
+            Jwt jwt = jwtDecoder.decode(token);
+
+            return ResponseEntity.ok(Map.of(
+                "valid", true,
+                "subject", jwt.getSubject() != null ? jwt.getSubject() : "",
+                "issuer", jwt.getIssuer() != null ? jwt.getIssuer().toString() : "",
+                "expiresAt", jwt.getExpiresAt() != null ? jwt.getExpiresAt().toString() : "",
+                "authorities", jwt.getClaimAsStringList("authorities") != null 
+                    ? jwt.getClaimAsStringList("authorities") 
+                    : java.util.Collections.emptyList()
+            ));
+
+        } catch (JwtException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of(
+                    "valid", false,
+                    "error", "Invalid JWT token: " + e.getMessage()
+                ));
+        }
+    }
+
+    /**
+     * JWT 検証のヘルスチェック
+     */
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, String>> health() {
+        return ResponseEntity.ok(Map.of("status", "ok", "service", "jwt-validation"));
+    }
+}

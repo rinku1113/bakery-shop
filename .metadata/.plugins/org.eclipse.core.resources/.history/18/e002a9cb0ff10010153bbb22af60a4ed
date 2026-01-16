@@ -1,0 +1,170 @@
+package com.example.shopping;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+@Controller
+public class OrderController {
+    
+    @Autowired
+    private OrderService orderService;
+    
+    @Autowired
+    private CartService cartService;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    /**
+     * チェックアウトページ（注文確認）を表示
+     */
+    @GetMapping("/checkout")
+    public String showCheckout(Authentication authentication, Model model) {
+        Integer userId = getUserId(authentication);
+        List<CartItem> cartItems = cartService.getCartItems(userId);
+        
+        if (cartItems.isEmpty()) {
+            return "redirect:/cart?error=empty";
+        }
+        
+        // 商品情報を読み込む
+        for (CartItem item : cartItems) {
+            item.getProduct().getName(); // プロキシを初期化
+        }
+        
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        
+        model.addAttribute("cartItems", cartItems);
+        model.addAttribute("total", cartService.calculateTotal(cartItems));
+        model.addAttribute("user", user);
+        return "checkout";
+    }
+    
+    /**
+     * 注文を確定
+     */
+    @PostMapping("/order/create")
+    public String createOrder(@RequestParam String shippingAddress,
+                            @RequestParam String paymentMethod,
+                            @RequestParam(required = false) String telephone,
+                            @RequestParam(required = false) String email,
+                            Authentication authentication,
+                            RedirectAttributes redirectAttributes) {
+        try {
+            Integer userId = getUserId(authentication);
+            
+            // ユーザー情報からデフォルト値を取得
+            User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+            
+            if (telephone == null || telephone.isEmpty()) {
+                telephone = user.getTelephone();
+            }
+            if (email == null || email.isEmpty()) {
+                email = user.getEmail();
+            }
+            
+            Order order = orderService.createOrder(userId, shippingAddress, paymentMethod, telephone, email);
+            redirectAttributes.addFlashAttribute("orderId", order.getId());
+            return "redirect:/order/confirmation/" + order.getId();
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "注文の処理に失敗しました: " + e.getMessage());
+            return "redirect:/checkout";
+        }
+    }
+    
+    /**
+     * 注文確認ページを表示
+     */
+    @GetMapping("/order/confirmation/{orderId}")
+    public String showOrderConfirmation(@PathVariable Integer orderId,
+                                      Authentication authentication,
+                                      Model model) {
+        try {
+            Integer userId = getUserId(authentication);
+            Order order = orderService.getOrder(orderId, userId);
+            
+            // 注文アイテムの商品情報を読み込む
+            if (order.getOrderItems() != null) {
+                for (OrderItem item : order.getOrderItems()) {
+                    item.getProduct().getName(); // プロキシを初期化
+                }
+            }
+            
+            model.addAttribute("order", order);
+            return "order_confirmation";
+        } catch (Exception e) {
+            model.addAttribute("error", e.getMessage());
+            return "redirect:/cart";
+        }
+    }
+    
+    /**
+     * 注文履歴ページを表示
+     */
+    @GetMapping("/orders")
+    public String showOrderHistory(Authentication authentication, Model model) {
+        Integer userId = getUserId(authentication);
+        List<Order> orders = orderService.getOrderHistory(userId);
+        
+        // 各注文のアイテム情報を読み込む
+        for (Order order : orders) {
+            if (order.getOrderItems() != null) {
+                for (OrderItem item : order.getOrderItems()) {
+                    item.getProduct().getName(); // プロキシを初期化
+                }
+            }
+        }
+        
+        model.addAttribute("orders", orders);
+        return "order_history";
+    }
+    
+    /**
+     * 注文詳細ページを表示
+     */
+    @GetMapping("/order/{orderId}")
+    public String showOrderDetail(@PathVariable Integer orderId,
+                                Authentication authentication,
+                                Model model) {
+        try {
+            Integer userId = getUserId(authentication);
+            Order order = orderService.getOrder(orderId, userId);
+            
+            // 注文アイテムの商品情報を読み込む
+            if (order.getOrderItems() != null) {
+                for (OrderItem item : order.getOrderItems()) {
+                    item.getProduct().getName(); // プロキシを初期化
+                }
+            }
+            
+            model.addAttribute("order", order);
+            return "order_detail";
+        } catch (Exception e) {
+            model.addAttribute("error", e.getMessage());
+            return "redirect:/orders";
+        }
+    }
+    
+    /**
+     * 認証情報からユーザーIDを取得
+     */
+    private Integer getUserId(Authentication authentication) {
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = userDetails.getUsername();
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        return user.getId();
+    }
+}
+

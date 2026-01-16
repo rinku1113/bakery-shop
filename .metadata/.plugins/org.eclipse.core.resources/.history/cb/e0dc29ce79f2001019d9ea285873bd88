@@ -1,0 +1,101 @@
+package com.example.shopping;
+
+import static org.springframework.security.config.Customizer.*;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+
+    private final UserDetailsService userDetailsService;
+    private final PasswordEncoder passwordEncoder;
+
+    public SecurityConfig(UserDetailsService uds, PasswordEncoder pe) {
+        this.userDetailsService = uds;
+        this.passwordEncoder = pe;
+    }
+
+    /**
+     * メインアプリケーション用の SecurityFilterChain
+     * OAuth 2.0 クライアント（Google、GitHub）ログインをサポート
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/", "/register", "/login", "/css/**", "/images/**", "/images_jpg/**", 
+                    "/products", "/products/**", "/search", "/oauth2/**", "/login/oauth2/**",
+                    "/.well-known/**", "/oauth2/**", "/api/gateway/health").permitAll()
+                .anyRequest().authenticated()
+            )
+            .csrf(csrf -> csrf.ignoringRequestMatchers("/images/**", "/oauth2/**", "/login/oauth2/**"))
+            // クリックジャッキング/情報漏えい/XSS（ブラウザ側制御）などのヘッダ
+            .headers(headers -> {
+                headers.frameOptions(frame -> frame.deny());
+                headers.contentTypeOptions(withDefaults());
+                headers.referrerPolicy(referrer -> referrer.policy(ReferrerPolicy.NO_REFERRER));
+                // NOTE: Spring Security 6.4+ では permissionsPolicy は非推奨扱いですが、挙動は有効です
+                headers.permissionsPolicy(perm -> perm.policy("geolocation=(), microphone=(), camera=()"));
+                headers.contentSecurityPolicy(csp -> csp.policyDirectives(
+                        "default-src 'self'; " +
+                        "base-uri 'self'; " +
+                        "object-src 'none'; " +
+                        "frame-ancestors 'none'; " +
+                        "script-src 'self'; " +
+                        "style-src 'self' 'unsafe-inline'; " +
+                        "img-src 'self' data: https:; " +
+                        "form-action 'self'"
+                ));
+            })
+            // セッション固定化対策（ログイン成功後にセッションIDを更新）
+            .sessionManagement(session -> session
+                .sessionFixation(fixation -> fixation.migrateSession())
+            )
+            .formLogin(form -> form
+                .loginPage("/login")
+                .loginProcessingUrl("/login")
+                .defaultSuccessUrl("/", true)  // ログイン成功後は常にホームページへ
+                .failureUrl("/login?error")
+                .permitAll()
+            )
+            // OAuth 2.0 クライアント（Google、GitHub）ログイン設定
+            .oauth2Login(oauth2 -> oauth2
+                .loginPage("/login")
+                .defaultSuccessUrl("/oauth2/success", true)  // OAuth ログイン成功後の処理
+                .failureUrl("/login?error=oauth2")
+                .permitAll()
+            )
+            .logout(logout -> logout
+                .logoutUrl("/logout")
+                .logoutSuccessUrl("/")
+                .permitAll()
+            );
+        return http.build();
+    }
+
+    // AuthenticationManager を明示的に作る（DaoAuthenticationProvider を登録）
+    @Bean
+    public AuthenticationManager authenticationManager(HttpSecurity http) throws Exception {
+        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+        provider.setUserDetailsService(userDetailsService);
+        provider.setPasswordEncoder(passwordEncoder);
+
+        AuthenticationManagerBuilder authBuilder =
+                http.getSharedObject(AuthenticationManagerBuilder.class);
+        authBuilder.authenticationProvider(provider);
+        return authBuilder.build();
+    }
+}

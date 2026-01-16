@@ -1,0 +1,58 @@
+spring.application.name=shopping-site
+
+spring.datasource.url=jdbc:mysql://localhost:3307/web_shop?useSSL=false&serverTimezone=UTC
+spring.datasource.username=root
+spring.datasource.password=R!9vX2@eLq7#dA
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.database-platform=org.hibernate.dialect.MySQL8Dialect
+
+# Cookie/セッションの基本対策（セッションハイジャック耐性）
+server.servlet.session.cookie.http-only=true
+# HTTPSが有効な環境ではtrue推奨（HTTPのみの環境だとCookieが送られずログインできません）
+server.servlet.session.cookie.secure=true
+server.servlet.session.cookie.same-site=lax
+
+# === HTTPS(自己署名証明書) ===
+# `scripts/generate-dev-cert.ps1` を実行して `src/main/resources/keystore.p12` を生成してください
+server.port=8443
+server.ssl.enabled=true
+server.ssl.key-store=classpath:keystore.p12
+server.ssl.key-store-type=PKCS12
+server.ssl.key-store-password=changeit
+server.ssl.key-alias=shopping-site
+
+# === HMAC（改ざん検出） ===
+# 本番では環境変数で上書き推奨: APP_HMAC_SECRET_BASE64
+app.hmac.secret-base64=${APP_HMAC_SECRET_BASE64:4oR0Rr0wTXbqX4c0uB0XcYlQG1Ih0x0g5f0cGkG0y8M=}
+
+# === OAuth 2.0 / OIDC 設定 ===
+# Google OAuth 2.0 クライアント設定
+# Google Cloud Console (https://console.cloud.google.com/) で以下を設定:
+# - 承認済みのリダイレクト URI: http://localhost:8080/login/oauth2/code/google, https://localhost:8443/login/oauth2/code/google
+spring.security.oauth2.client.registration.google.client-id=1077251297165-13abj374ao2d1dre9leu3n1ti51i59op.apps.googleusercontent.com
+spring.security.oauth2.client.registration.google.client-secret=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
+spring.security.oauth2.client.registration.google.scope=openid,profile,email
+spring.security.oauth2.client.registration.google.redirect-uri=http://localhost:8080/login/oauth2/code/google
+
+# GitHub OAuth 2.0 クライアント設定
+# GitHub Developer Settings (https://github.com/settings/developers) で以下を設定:
+# - Authorization callback URL: http://localhost:8080/login/oauth2/code/github, https://localhost:8443/login/oauth2/code/github
+spring.security.oauth2.client.registration.github.client-id=${GITHUB_CLIENT_ID:your-github-client-id}
+spring.security.oauth2.client.registration.github.client-secret=${GITHUB_CLIENT_SECRET:your-github-client-secret}
+spring.security.oauth2.client.registration.github.scope=read:user,user:email
+spring.security.oauth2.client.registration.github.redirect-uri=http://localhost:8080/login/oauth2/code/github
+
+# Spring Authorization Server 設定
+# JWT 発行元 (issuer) の URL
+spring.security.oauth2.authorizationserver.issuer-url=http://localhost:8080
+
+# JWT 署名用のキーストア設定（開発環境用）
+# 本番環境では適切なキーストアを使用してください
+spring.security.oauth2.authorizationserver.jwt.keystore.location=classpath:oauth2-keystore.jks
+spring.security.oauth2.authorizationserver.jwt.keystore.password=${OAUTH2_KEYSTORE_PASSWORD:changeit}
+spring.security.oauth2.authorizationserver.jwt.keystore.alias=oauth2-key
+spring.security.oauth2.authorizationserver.jwt.keystore.key-password=${OAUTH2_KEY_PASSWORD:changeit}
+

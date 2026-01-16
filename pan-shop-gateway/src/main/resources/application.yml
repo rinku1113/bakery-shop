@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: pan-shop-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: api-route
+          uri: https://localhost:8443
+          predicates:
+            - Path=/api/**
+
+server:
+  port: 8080
+
+app:
+  jwt:
+    issuer-url: https://localhost:8443
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.security: DEBUG

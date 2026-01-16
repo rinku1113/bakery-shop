@@ -1,0 +1,109 @@
+package com.example.shopping;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+@Controller
+public class CartController {
+    
+    @Autowired
+    private CartService cartService;
+    
+    @Autowired
+    private UserRepository userRepository;
+    
+    /**
+     * カートページを表示
+     */
+    @GetMapping("/cart")
+    public String showCart(Authentication authentication, Model model) {
+        Integer userId = getUserId(authentication);
+        List<CartItem> cartItems = cartService.getCartItems(userId);
+        
+        // 商品情報を読み込む（Lazy Loading対策）
+        for (CartItem item : cartItems) {
+            item.getProduct().getName(); // プロキシを初期化
+        }
+        
+        model.addAttribute("cartItems", cartItems);
+        model.addAttribute("total", cartService.calculateTotal(cartItems));
+        return "cart";
+    }
+    
+    /**
+     * カートに商品を追加
+     */
+    @PostMapping("/cart/add")
+    public String addToCart(@RequestParam Integer productId,
+                          @RequestParam(defaultValue = "1") Integer quantity,
+                          Authentication authentication,
+                          RedirectAttributes redirectAttributes) {
+        try {
+            Integer userId = getUserId(authentication);
+            cartService.addToCart(userId, productId, quantity);
+            redirectAttributes.addFlashAttribute("message", "カートに追加しました");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "カートへの追加に失敗しました: " + e.getMessage());
+        }
+        return "redirect:/products/" + productId;
+    }
+    
+    /**
+     * カートアイテムの数量を更新
+     */
+    @PostMapping("/cart/update")
+    public String updateCartItem(@RequestParam Integer cartItemId,
+                               @RequestParam Integer quantity,
+                               Authentication authentication,
+                               RedirectAttributes redirectAttributes) {
+        try {
+            if (quantity <= 0) {
+                redirectAttributes.addFlashAttribute("error", "数量は1以上で入力してください");
+                return "redirect:/cart";
+            }
+            
+            cartService.updateQuantity(cartItemId, quantity);
+            redirectAttributes.addFlashAttribute("message", "数量を更新しました");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "数量の更新に失敗しました: " + e.getMessage());
+        }
+        return "redirect:/cart";
+    }
+    
+    /**
+     * カートアイテムを削除
+     */
+    @PostMapping("/cart/remove")
+    public String removeFromCart(@RequestParam Integer cartItemId,
+                                Authentication authentication,
+                                RedirectAttributes redirectAttributes) {
+        try {
+            cartService.removeFromCart(cartItemId);
+            redirectAttributes.addFlashAttribute("message", "カートから削除しました");
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "削除に失敗しました: " + e.getMessage());
+        }
+        return "redirect:/cart";
+    }
+    
+    /**
+     * 認証情報からユーザーIDを取得
+     */
+    private Integer getUserId(Authentication authentication) {
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = userDetails.getUsername();
+        User user = userRepository.findByUsername(username)
+            .orElseThrow(() -> new RuntimeException("ユーザーが見つかりません"));
+        return user.getId();
+    }
+}
+
